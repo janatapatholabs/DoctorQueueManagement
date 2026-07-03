@@ -1,0 +1,232 @@
+'use client'
+
+import { useState, useRef } from 'react'
+import { toggleDoctorPresence, advanceQueue, addDoctor, removeDoctor } from '@/app/reception/actions'
+import { CheckCircle2, User, Phone, MapPin, Power, ArrowRight, Activity, Trash2, Plus } from 'lucide-react'
+import { cn } from '@/utils/utils'
+
+type Doctor = { id: string; name: string; specialization: string; is_present: boolean }
+type Queue = { id: string; doctor_id: string; patient_name: string; phone_number: string; serial_number: number; status: string; created_at: string }
+
+export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: Queue[] }) {
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
+
+  const handleTogglePresence = async (doctorId: string, isPresent: boolean) => {
+    setLoadingIds(prev => new Set(prev).add(doctorId))
+    await toggleDoctorPresence(doctorId, isPresent)
+    setLoadingIds(prev => {
+      const next = new Set(prev)
+      next.delete(doctorId)
+      return next
+    })
+  }
+
+  const handleAdvanceQueue = async (queueId: string) => {
+    setLoadingIds(prev => new Set(prev).add(queueId))
+    await advanceQueue(queueId)
+    setLoadingIds(prev => {
+      const next = new Set(prev)
+      next.delete(queueId)
+      return next
+    })
+  }
+
+  const handleRemoveDoctor = async (doctorId: string) => {
+    if (!confirm('Are you sure you want to remove this doctor? All their queue records will be deleted.')) return;
+    setLoadingIds(prev => new Set(prev).add(doctorId))
+    await removeDoctor(doctorId)
+    setLoadingIds(prev => {
+      const next = new Set(prev)
+      next.delete(doctorId)
+      return next
+    })
+  }
+
+  const handleAddDoctorSubmit = async (formData: FormData) => {
+    setLoadingIds(prev => new Set(prev).add('add-doctor'))
+    await addDoctor(formData)
+    setLoadingIds(prev => {
+      const next = new Set(prev)
+      next.delete('add-doctor')
+      return next
+    })
+    const form = document.getElementById('add-doctor-form') as HTMLFormElement
+    if (form) form.reset()
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {doctors.map(doctor => {
+        const docQueues = queues.filter(q => q.doctor_id === doctor.id)
+        const waitingQueues = docQueues.filter(q => q.status === 'waiting')
+        const completedQueues = docQueues.filter(q => q.status === 'completed')
+
+        return (
+          <div key={doctor.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            {/* Doctor Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800 flex items-center">
+                  {doctor.name}
+                  {doctor.is_present && (
+                    <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      In Clinic
+                    </span>
+                  )}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">{doctor.specialization}</p>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleRemoveDoctor(doctor.id)}
+                  disabled={loadingIds.has(doctor.id)}
+                  className="px-3 py-2 rounded-xl text-sm transition-all flex items-center shadow-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-70"
+                  title="Remove Doctor"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <button
+                  onClick={() => handleTogglePresence(doctor.id, !doctor.is_present)}
+                  disabled={loadingIds.has(doctor.id)}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center shadow-sm border disabled:opacity-70",
+                    doctor.is_present 
+                      ? "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                  )}
+                >
+                  <Power size={16} className="mr-2" />
+                  {doctor.is_present ? 'Mark as Left' : 'Mark Arrived'}
+                </button>
+              </div>
+            </div>
+
+            {/* Queue Section */}
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Current Queue</h4>
+                <div className="text-sm font-medium text-slate-500">
+                  {waitingQueues.length} waiting
+                </div>
+              </div>
+
+              {waitingQueues.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <Activity size={24} className="mx-auto mb-2 text-slate-400" />
+                  <p>No patients waiting right now.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {waitingQueues.map((q, idx) => (
+                    <div 
+                      key={q.id} 
+                      className={cn(
+                        "p-4 rounded-xl border flex items-center justify-between transition-all",
+                        idx === 0 
+                          ? "bg-blue-50 border-blue-200 shadow-sm" 
+                          : "bg-white border-slate-200"
+                      )}
+                    >
+                      <div className="flex items-center">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center font-bold mr-4",
+                          idx === 0 ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                        )}>
+                          #{q.serial_number}
+                        </div>
+                        <div>
+                          <p className={cn(
+                            "font-bold",
+                            idx === 0 ? "text-blue-900" : "text-slate-800"
+                          )}>
+                            {q.patient_name}
+                          </p>
+                          <p className={cn(
+                            "text-xs flex items-center mt-1",
+                            idx === 0 ? "text-blue-600" : "text-slate-500"
+                          )}>
+                            <Phone size={12} className="mr-1" />
+                            {q.phone_number}
+                          </p>
+                        </div>
+                      </div>
+
+                      {idx === 0 && doctor.is_present && (
+                        <button
+                          onClick={() => handleAdvanceQueue(q.id)}
+                          disabled={loadingIds.has(q.id)}
+                          className="px-4 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-70 flex items-center"
+                        >
+                          Next Patient <ArrowRight size={16} className="ml-2" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Completed Section (Brief) */}
+            {completedQueues.length > 0 && (
+              <div className="px-6 pb-6">
+                <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider">Completed Today ({completedQueues.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {completedQueues.slice(-5).map(q => (
+                    <span key={q.id} className="px-2 py-1 bg-slate-100 border border-slate-200 text-slate-600 text-xs rounded-md font-medium">
+                      #{q.serial_number} {q.patient_name}
+                    </span>
+                  ))}
+                  {completedQueues.length > 5 && (
+                    <span className="px-2 py-1 text-slate-400 text-xs font-medium">...and {completedQueues.length - 5} more</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add Doctor Form Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-center border-dashed">
+        <div className="p-6">
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 mb-2">
+              <Plus size={24} />
+            </div>
+          </div>
+          <h3 className="text-xl font-bold text-slate-800 text-center mb-6">Add New Doctor</h3>
+          
+          <form id="add-doctor-form" action={handleAddDoctorSubmit} className="space-y-4 max-w-sm mx-auto">
+            <div>
+              <label className="text-sm font-semibold text-slate-700 block mb-1">Doctor Name</label>
+              <input 
+                type="text" 
+                name="name" 
+                required
+                placeholder="e.g. Dr. Jane Doe"
+                className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:border-slate-800 focus:ring-2 focus:ring-slate-200 outline-none transition-all text-slate-700 placeholder:text-slate-400"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-slate-700 block mb-1">Specialization</label>
+              <input 
+                type="text" 
+                name="specialization" 
+                required
+                placeholder="e.g. Cardiologist"
+                className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:border-slate-800 focus:ring-2 focus:ring-slate-200 outline-none transition-all text-slate-700 placeholder:text-slate-400"
+              />
+            </div>
+            <button 
+              type="submit" 
+              disabled={loadingIds.has('add-doctor')}
+              className="w-full bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition-all flex items-center justify-center disabled:opacity-70 mt-4"
+            >
+              {loadingIds.has('add-doctor') ? 'Adding...' : 'Add Doctor'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
