@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { joinQueue } from '../actions'
-import { CheckCircle2, Loader2, User, Phone } from 'lucide-react'
+import { CheckCircle2, Loader2, User, Phone, Calendar } from 'lucide-react'
 
 type Doctor = {
   id: string
@@ -11,10 +11,25 @@ type Doctor = {
   is_present: boolean
 }
 
+function getTodayDateString() {
+  const today = new Date()
+  const yyyy = today.getFullYear()
+  const mm = String(today.getMonth() + 1).padStart(2, '0')
+  const dd = String(today.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function formatDate(dateStr: string) {
+  const date = new Date(dateStr + 'T00:00:00')
+  return date.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+}
+
 export function RegistrationForm({ doctors }: { doctors: Doctor[] }) {
   const [loading, setLoading] = useState(false)
-  const [successData, setSuccessData] = useState<{ serialNumber: number; doctorName: string } | null>(null)
+  const [successData, setSuccessData] = useState<{ serialNumber: number; doctorName: string; appointmentDate: string; isFuture: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const today = getTodayDateString()
 
   async function handleSubmit(formData: FormData) {
     setLoading(true)
@@ -26,10 +41,13 @@ export function RegistrationForm({ doctors }: { doctors: Doctor[] }) {
       setError(result.error)
     } else if (result.success && result.serialNumber) {
       const doctorId = formData.get('doctorId') as string
+      const appointmentDate = formData.get('appointmentDate') as string
       const doctor = doctors.find(d => d.id === doctorId)
       setSuccessData({
         serialNumber: result.serialNumber,
-        doctorName: doctor?.name || 'the doctor'
+        doctorName: doctor?.name || 'the doctor',
+        appointmentDate: appointmentDate,
+        isFuture: appointmentDate > today,
       })
     }
     
@@ -42,11 +60,28 @@ export function RegistrationForm({ doctors }: { doctors: Doctor[] }) {
         <div className="mx-auto w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
           <CheckCircle2 size={32} />
         </div>
-        <h2 className="text-3xl font-bold text-slate-800 mb-2">You're in the queue!</h2>
-        <p className="text-slate-600 mb-8 text-lg">Your serial number for {successData.doctorName} is:</p>
-        <div className="text-6xl font-black text-blue-600 bg-blue-50/50 py-6 rounded-xl border border-blue-100 mb-8">
-          #{successData.serialNumber}
-        </div>
+        <h2 className="text-3xl font-bold text-slate-800 mb-2">
+          {successData.isFuture ? 'Appointment Scheduled!' : "You're in the queue!"}
+        </h2>
+        <p className="text-slate-600 mb-2 text-lg">
+          {successData.isFuture
+            ? `Your slot with ${successData.doctorName} is booked for:`
+            : `Your serial number for ${successData.doctorName} is:`}
+        </p>
+        {successData.isFuture ? (
+          <>
+            <div className="text-xl font-bold text-blue-700 bg-blue-50 py-4 px-6 rounded-xl border border-blue-100 mb-4">
+              {formatDate(successData.appointmentDate)}
+            </div>
+            <div className="text-4xl font-black text-blue-600 bg-blue-50/50 py-4 rounded-xl border border-blue-100 mb-8">
+              #{successData.serialNumber}
+            </div>
+          </>
+        ) : (
+          <div className="text-6xl font-black text-blue-600 bg-blue-50/50 py-6 rounded-xl border border-blue-100 mb-8">
+            #{successData.serialNumber}
+          </div>
+        )}
         <p className="text-sm text-slate-500 mb-8">We will notify you via SMS when it's your turn.</p>
         <button 
           onClick={() => setSuccessData(null)}
@@ -90,6 +125,27 @@ export function RegistrationForm({ doctors }: { doctors: Doctor[] }) {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="appointmentDate" className="text-sm font-semibold text-slate-700 block">
+            Appointment Date
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+              <Calendar size={18} />
+            </div>
+            <input
+              type="date"
+              name="appointmentDate"
+              id="appointmentDate"
+              required
+              defaultValue={today}
+              min={today}
+              className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-700"
+            />
+          </div>
+          <p className="text-xs text-slate-400">Select today for immediate queue entry, or a future date to pre-schedule.</p>
         </div>
 
         <div className="space-y-2">

@@ -1,15 +1,39 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { toggleDoctorPresence, advanceQueue, addDoctor, removeDoctor } from '@/app/reception/actions'
-import { CheckCircle2, User, Phone, MapPin, Power, ArrowRight, Activity, Trash2, Plus } from 'lucide-react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { toggleDoctorPresence, addDoctor, removeDoctor, toggleQueueStatus } from '@/app/reception/actions'
+import { useState } from 'react'
+import { CheckCircle2, Phone, Power, ArrowRight, Activity, Trash2, Plus, CalendarClock } from 'lucide-react'
 import { cn } from '@/utils/utils'
 
 type Doctor = { id: string; name: string; specialization: string; is_present: boolean }
-type Queue = { id: string; doctor_id: string; patient_name: string; phone_number: string; serial_number: number; status: string; created_at: string }
+type Queue = { id: string; doctor_id: string; doctor_name: string; patient_name: string; phone_number: string; serial_number: number; status: string; appointment_date: string }
 
-export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: Queue[] }) {
+function formatDate(dateStr: string) {
+  const date = new Date(dateStr + 'T00:00:00')
+  return date.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+export function DashboardView({
+  doctors,
+  queues,
+  futureQueues,
+}: {
+  doctors: Doctor[]
+  queues: Queue[]
+  futureQueues: Queue[]
+}) {
+  const router = useRouter()
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      router.refresh()
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [router])
 
   const handleTogglePresence = async (doctorId: string, isPresent: boolean) => {
     setLoadingIds(prev => new Set(prev).add(doctorId))
@@ -21,9 +45,9 @@ export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: 
     })
   }
 
-  const handleAdvanceQueue = async (queueId: string) => {
+  const handleToggleQueueStatus = async (queueId: string, currentStatus: string) => {
     setLoadingIds(prev => new Set(prev).add(queueId))
-    await advanceQueue(queueId)
+    await toggleQueueStatus(queueId, currentStatus)
     setLoadingIds(prev => {
       const next = new Set(prev)
       next.delete(queueId)
@@ -32,7 +56,7 @@ export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: 
   }
 
   const handleRemoveDoctor = async (doctorId: string) => {
-    if (!confirm('Are you sure you want to remove this doctor? All their queue records will be deleted.')) return;
+    if (!confirm('Are you sure you want to remove this doctor? All their queue records will be deleted.')) return
     setLoadingIds(prev => new Set(prev).add(doctorId))
     await removeDoctor(doctorId)
     setLoadingIds(prev => {
@@ -59,7 +83,10 @@ export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: 
       {doctors.map(doctor => {
         const docQueues = queues.filter(q => q.doctor_id === doctor.id)
         const waitingQueues = docQueues.filter(q => q.status === 'waiting')
-        const completedQueues = docQueues.filter(q => q.status === 'completed')
+
+        // Future schedules grouped by date
+        const docFutureQueues = futureQueues.filter(q => q.doctor_id === doctor.id)
+        const futureDates = [...new Set(docFutureQueues.map(q => q.appointment_date))].sort()
 
         return (
           <div key={doctor.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -89,10 +116,10 @@ export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: 
                   onClick={() => handleTogglePresence(doctor.id, !doctor.is_present)}
                   disabled={loadingIds.has(doctor.id)}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center shadow-sm border disabled:opacity-70",
-                    doctor.is_present 
-                      ? "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                      : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                    'px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center shadow-sm border disabled:opacity-70',
+                    doctor.is_present
+                      ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
                   )}
                 >
                   <Power size={16} className="mr-2" />
@@ -101,84 +128,115 @@ export function DashboardView({ doctors, queues }: { doctors: Doctor[], queues: 
               </div>
             </div>
 
-            {/* Queue Section */}
+            {/* Today's Queue Section */}
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Current Queue</h4>
+                <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Today's Queue</h4>
                 <div className="text-sm font-medium text-slate-500">
-                  {waitingQueues.length} waiting
+                  {waitingQueues.length} waiting / {docQueues.length} total
                 </div>
               </div>
 
-              {waitingQueues.length === 0 ? (
+              {docQueues.length === 0 ? (
                 <div className="py-8 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <Activity size={24} className="mx-auto mb-2 text-slate-400" />
-                  <p>No patients waiting right now.</p>
+                  <p>No patients in queue today.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {waitingQueues.map((q, idx) => (
-                    <div 
-                      key={q.id} 
-                      className={cn(
-                        "p-4 rounded-xl border flex items-center justify-between transition-all",
-                        idx === 0 
-                          ? "bg-blue-50 border-blue-200 shadow-sm" 
-                          : "bg-white border-slate-200"
-                      )}
-                    >
-                      <div className="flex items-center">
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center font-bold mr-4",
-                          idx === 0 ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
-                        )}>
-                          #{q.serial_number}
-                        </div>
-                        <div>
-                          <p className={cn(
-                            "font-bold",
-                            idx === 0 ? "text-blue-900" : "text-slate-800"
+                  {docQueues.sort((a, b) => a.serial_number - b.serial_number).map((q) => {
+                    const isCompleted = q.status === 'completed'
+                    return (
+                      <div
+                        key={q.id}
+                        className={cn(
+                          'p-4 rounded-xl border flex items-center justify-between transition-all duration-300',
+                          isCompleted
+                            ? 'bg-slate-50 border-slate-100 opacity-60 grayscale pointer-events-none'
+                            : 'bg-white border-slate-200 shadow-sm'
+                        )}
+                      >
+                        <div className="flex items-center">
+                          <div className={cn(
+                            'w-10 h-10 rounded-full flex items-center justify-center font-bold mr-4',
+                            isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-blue-100 text-blue-700'
                           )}>
-                            {q.patient_name}
-                          </p>
-                          <p className={cn(
-                            "text-xs flex items-center mt-1",
-                            idx === 0 ? "text-blue-600" : "text-slate-500"
-                          )}>
-                            <Phone size={12} className="mr-1" />
-                            {q.phone_number}
-                          </p>
+                            #{q.serial_number}
+                          </div>
+                          <div>
+                            <p className={cn(
+                              'font-bold',
+                              isCompleted ? 'text-slate-500 line-through' : 'text-slate-800'
+                            )}>
+                              {q.patient_name}
+                            </p>
+                            <p className={cn(
+                              'text-xs flex items-center mt-1',
+                              isCompleted ? 'text-slate-400' : 'text-slate-500'
+                            )}>
+                              <Phone size={12} className="mr-1" />
+                              {q.phone_number}
+                            </p>
+                          </div>
                         </div>
-                      </div>
 
-                      {idx === 0 && doctor.is_present && (
-                        <button
-                          onClick={() => handleAdvanceQueue(q.id)}
-                          disabled={loadingIds.has(q.id)}
-                          className="px-4 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-70 flex items-center"
-                        >
-                          Next Patient <ArrowRight size={16} className="ml-2" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                        {!isCompleted && (
+                          <button
+                            onClick={() => handleToggleQueueStatus(q.id, q.status)}
+                            disabled={loadingIds.has(q.id)}
+                            className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 text-sm font-semibold rounded-lg hover:bg-green-100 transition-colors shadow-sm disabled:opacity-70 flex items-center"
+                          >
+                            <CheckCircle2 size={16} className="mr-1" /> Done
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Completed Section (Brief) */}
-            {completedQueues.length > 0 && (
-              <div className="px-6 pb-6">
-                <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider">Completed Today ({completedQueues.length})</p>
-                <div className="flex flex-wrap gap-2">
-                  {completedQueues.slice(-5).map(q => (
-                    <span key={q.id} className="px-2 py-1 bg-slate-100 border border-slate-200 text-slate-600 text-xs rounded-md font-medium">
-                      #{q.serial_number} {q.patient_name}
-                    </span>
-                  ))}
-                  {completedQueues.length > 5 && (
-                    <span className="px-2 py-1 text-slate-400 text-xs font-medium">...and {completedQueues.length - 5} more</span>
-                  )}
+            {/* Future Schedules Section */}
+            {futureDates.length > 0 && (
+              <div className="px-6 pb-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center mb-4">
+                  <CalendarClock size={16} className="mr-2 text-violet-500" />
+                  <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Future Schedules</h4>
+                </div>
+                <div className="space-y-4">
+                  {futureDates.map(date => {
+                    const datePatients = docFutureQueues.filter(q => q.appointment_date === date)
+                    return (
+                      <div key={date}>
+                        <p className="text-xs font-semibold text-violet-600 mb-2 flex items-center">
+                          <ArrowRight size={12} className="mr-1" />
+                          {formatDate(date)}
+                          <span className="ml-2 bg-violet-100 text-violet-700 text-xs px-2 py-0.5 rounded-full font-semibold">
+                            {datePatients.length} patient{datePatients.length > 1 ? 's' : ''}
+                          </span>
+                        </p>
+                        <div className="space-y-2">
+                          {datePatients.map(q => (
+                            <div
+                              key={q.id}
+                              className="flex items-center p-3 rounded-lg bg-violet-50 border border-violet-100"
+                            >
+                              <div className="w-7 h-7 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center text-xs font-bold mr-3">
+                                #{q.serial_number}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-slate-700 truncate">{q.patient_name}</p>
+                                <p className="text-xs text-slate-500 flex items-center mt-0.5">
+                                  <Phone size={10} className="mr-1" />
+                                  {q.phone_number}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

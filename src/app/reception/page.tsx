@@ -20,14 +20,23 @@ export default async function ReceptionDashboard() {
     .select('*')
     .order('name')
 
-  // Fetch today's queue
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Today's date string in YYYY-MM-DD format (local)
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
+  // Fetch today's queue entries
   const { data: queues } = await supabase
     .from('queue')
     .select('*')
-    .gte('created_at', today.toISOString())
+    .eq('appointment_date', todayStr)
+    .order('serial_number', { ascending: true })
+
+  // Fetch future scheduled appointments (appointment_date > today)
+  const { data: futureQueues } = await supabase
+    .from('queue')
+    .select('*')
+    .gt('appointment_date', todayStr)
+    .order('appointment_date', { ascending: true })
     .order('serial_number', { ascending: true })
 
   return (
@@ -52,7 +61,11 @@ export default async function ReceptionDashboard() {
       </nav>
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <DashboardView doctors={doctors || []} queues={queues || []} />
+        <DashboardView
+          doctors={doctors || []}
+          queues={queues || []}
+          futureQueues={futureQueues || []}
+        />
       </main>
     </div>
   )
