@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toggleDoctorPresence, addDoctor, removeDoctor, toggleQueueStatus } from '@/app/reception/actions'
 import { useState } from 'react'
-import { CheckCircle2, Phone, Power, ArrowRight, Activity, Trash2, Plus, CalendarClock } from 'lucide-react'
+import { CheckCircle2, Phone, Power, Activity, Trash2, Plus} from 'lucide-react'
 import { cn } from '@/utils/utils'
 
 type Doctor = { id: string; name: string; specialization: string; is_present: boolean }
@@ -18,11 +18,9 @@ function formatDate(dateStr: string) {
 export function DashboardView({
   doctors,
   queues,
-  futureQueues,
 }: {
   doctors: Doctor[]
   queues: Queue[]
-  futureQueues: Queue[]
 }) {
   const router = useRouter()
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
@@ -83,10 +81,6 @@ export function DashboardView({
       {doctors.map(doctor => {
         const docQueues = queues.filter(q => q.doctor_id === doctor.id)
         const waitingQueues = docQueues.filter(q => q.status === 'waiting')
-
-        // Future schedules grouped by date
-        const docFutureQueues = futureQueues.filter(q => q.doctor_id === doctor.id)
-        const futureDates = [...new Set(docFutureQueues.map(q => q.appointment_date))].sort()
 
         return (
           <div key={doctor.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -195,51 +189,6 @@ export function DashboardView({
                 </div>
               )}
             </div>
-
-            {/* Future Schedules Section */}
-            {futureDates.length > 0 && (
-              <div className="px-6 pb-6 border-t border-slate-100 pt-4">
-                <div className="flex items-center mb-4">
-                  <CalendarClock size={16} className="mr-2 text-violet-500" />
-                  <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Future Schedules</h4>
-                </div>
-                <div className="space-y-4">
-                  {futureDates.map(date => {
-                    const datePatients = docFutureQueues.filter(q => q.appointment_date === date)
-                    return (
-                      <div key={date}>
-                        <p className="text-xs font-semibold text-violet-600 mb-2 flex items-center">
-                          <ArrowRight size={12} className="mr-1" />
-                          {formatDate(date)}
-                          <span className="ml-2 bg-violet-100 text-violet-700 text-xs px-2 py-0.5 rounded-full font-semibold">
-                            {datePatients.length} patient{datePatients.length > 1 ? 's' : ''}
-                          </span>
-                        </p>
-                        <div className="space-y-2">
-                          {datePatients.map(q => (
-                            <div
-                              key={q.id}
-                              className="flex items-center p-3 rounded-lg bg-violet-50 border border-violet-100"
-                            >
-                              <div className="w-7 h-7 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center text-xs font-bold mr-3">
-                                #{q.serial_number}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-slate-700 truncate">{q.patient_name}</p>
-                                <p className="text-xs text-slate-500 flex items-center mt-0.5">
-                                  <Phone size={10} className="mr-1" />
-                                  {q.phone_number}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )
       })}
